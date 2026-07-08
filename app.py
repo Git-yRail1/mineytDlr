@@ -36,8 +36,7 @@ BYPASS_OPTS = {
     'geo_bypass': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['web', 'ios'],
-            'skip': ['dash', 'hls']
+            'player_client': ['web', 'ios']  # Stripped the restrictive skip rule
         }
     },
     'http_headers': {
