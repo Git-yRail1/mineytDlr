@@ -101,13 +101,13 @@ def download_video():
         output_filename = f"{safe_title}_{target_height}p.mp4"
         output_file = os.path.join(DOWNLOADS_DIR, output_filename)
 
-        video_opts{
+        # Step 2: Download isolated tracks
+        video_opts = {
             'format': f'bestvideo[height={target_height}]/bestvideo[height<={target_height}]',
             'outtmpl': f"{video_pattern}.%(ext)s",
             'quiet': True
         }
-
-        audio_opts{
+        audio_opts = {
             'format': 'bestaudio',
             'outtmpl': f"{audio_pattern}.%(ext)s",
             'quiet': True
