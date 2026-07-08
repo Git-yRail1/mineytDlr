@@ -6,31 +6,12 @@ import re
 
 app = Flask(__name__)
 
+# Ensure absolute temporary and download storage zones exist
 STORAGE_DIR = "/tmp"
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
 def clean_filename(title):
     return re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')
-
-# --- BOT BLOCK BYPASS SETTINGS ---
-# These options fool YouTube into thinking the request is coming from a real browser
-BYPASS_OPTS = {
-    'quiet': True,
-    'no_warnings': True,
-    'geo_bypass': True,                  # Bypasses country-level restrictions
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['web', 'ios'],  # Rotates signatures between desktop and iPhone layouts
-            'skip': ['dash', 'hls']
-        }
-    },
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Sec-Fetch-Mode': 'navigate',
-    }
-}
 
 @app.route('/')
 def home():
@@ -44,10 +25,7 @@ def scan_video():
         return jsonify({'error': 'URL cannot be empty'}), 400
 
     try:
-        # Merge our scanning parameters with the bypass settings
-        scan_opts = BYPASS_OPTS.copy()
-        
-        with yt_dlp.YoutubeDL(scan_opts) as ydl:
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
             meta = ydl.extract_info(url, download=False)
             formats = meta.get('formats', [])
             
@@ -69,7 +47,7 @@ def scan_video():
             'resolutions': available_resolutions
         })
     except Exception as e:
-        return jsonify({'error': f"Failed to bypass verification: {str(e)}"}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/download', methods=['POST'])
 def download_video():
@@ -81,44 +59,45 @@ def download_video():
         return jsonify({'error': 'Missing URL or Resolution parameters'}), 400
 
     try:
-        with yt_dlp.YoutubeDL(BYPASS_OPTS) as ydl:
+        # Step 1: Gather clean title information
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
             meta = ydl.extract_info(url, download=False)
             safe_title = clean_filename(meta.get('title', 'video'))
 
+        # Construct temporary operational paths
         video_pattern = os.path.join(STORAGE_DIR, f"temp_v_{safe_title}")
         audio_pattern = os.path.join(STORAGE_DIR, f"temp_a_{safe_title}")
         output_file = os.path.join(STORAGE_DIR, f"{safe_title}_{target_height}p.mp4")
-
-        # Step 2: Inject bypass rules into both tracking downloads
-        video_opts = BYPASS_OPTS.copy()
-        video_opts.update({
+        print("step1 finish")
+        # Step 2: Download isolated tracks
+        video_opts = {
             'format': f'bestvideo[height={target_height}]/bestvideo[height<={target_height}]',
-            'outtmpl': f"{video_pattern}.%(ext)s"
-        })
-
-        audio_opts = BYPASS_OPTS.copy()
-        audio_opts.update({
+            'outtmpl': f"{video_pattern}.%(ext)s",
+            'quiet': True
+        }
+        audio_opts = {
             'format': 'bestaudio',
-            'outtmpl': f"{audio_pattern}.%(ext)s"
-        })
+            'outtmpl': f"{audio_pattern}.%(ext)s",
+            'quiet': True
+        }
 
-        # Run downloads inside protected configuration containers
         with yt_dlp.YoutubeDL(video_opts) as ydl:
             ydl.download([url])
         with yt_dlp.YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
-
+        print("step2 finish")
+        # Step 3: Dynamically scan for extension formats downloaded
         files = os.listdir(STORAGE_DIR)
         v_match = [f for f in files if f.startswith(f"temp_v_{safe_title}")]
         a_match = [f for f in files if f.startswith(f"temp_a_{safe_title}")]
 
         if not v_match or not a_match:
-            return jsonify({'error': 'Failed to capture structural source streams safely'}), 500
+            return jsonify({'error': 'Failed to capture structural source streams'}), 500
 
         video_file = os.path.join(STORAGE_DIR, v_match[0])
         audio_file = os.path.join(STORAGE_DIR, a_match[0])
-
-        # Step 3: Combine via system ffmpeg
+        print("step3 finish")
+        # Step 4: Combine via system ffmpeg
         ffmpeg_cmd = [
             'ffmpeg', '-y',
             '-i', video_file,
@@ -129,18 +108,20 @@ def download_video():
         ]
         
         process = subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
+        print("ffmpeg finish")
+        # Cleanup temporary chunks immediately
         if os.path.exists(video_file): os.remove(video_file)
         if os.path.exists(audio_file): os.remove(audio_file)
-
+        print("Erase temp files")
         if process.returncode == 0 and os.path.exists(output_file):
             return send_file(output_file, as_attachment=True, download_name=os.path.basename(output_file))
         else:
             return jsonify({'error': f'Muxing compilation failed: {process.stderr}'}), 500
 
     except Exception as e:
-        return jsonify({'error': f"Extraction blocked by platform: {str(e)}"}), 500
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
+    # Railway passes a dynamic PORT environment variable we must listen to
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
