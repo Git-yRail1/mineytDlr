@@ -40,8 +40,9 @@
 </div>
 
 <script>
-async def scanVideo() {
-    const url = document.getElementById('url').value.trim();
+// FIXED: Changed 'async def' to 'async function'
+async function scanVideo() {
+    const url = document.getElementById('url').value.strip ? document.getElementById('url').value.strip() : document.getElementById('url').value.trim();
     if(!url) return alert('Please enter a URL first!');
     
     const btn = document.getElementById('scan-btn');
@@ -82,7 +83,8 @@ async def scanVideo() {
     }
 }
 
-async def startDownload() {
+// FIXED: Changed 'async def' to 'async function'
+async function startDownload() {
     const url = document.getElementById('url').value.trim();
     const resolution = document.getElementById('resolution').value;
     const btn = document.getElementById('download-btn');
@@ -103,12 +105,10 @@ async def startDownload() {
             throw new Error(data.error || 'Server error downloading');
         }
 
-        // Handle binary stream blob conversion
         const blob = await response.blob();
         const downloadUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         
-        // Try parsing file structure out of content headers if possible
         const contentDisposition = response.headers.get('Content-Disposition');
         let filename = `downloaded_${resolution}p.mp4`;
         if (contentDisposition && contentDisposition.includes('filename=')) {
