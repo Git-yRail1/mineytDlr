@@ -14,39 +14,9 @@ DOWNLOADS_DIR = os.path.join(STORAGE_DIR, "downloads")
 os.makedirs(STORAGE_DIR, exist_ok=True)
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
-# Path where the temporary cookies file will be generated on the server
-COOKIE_FILE_PATH = os.path.join(STORAGE_DIR, "youtube_cookies.txt")
 
 def clean_filename(title):
     return re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')
-
-# --- COOKIE ENGINE SHIELD ---
-cookies_data = os.environ.get("YOUTUBE_COOKIES", "").strip()
-if cookies_data:
-    try:
-        with open(COOKIE_FILE_PATH, "w", encoding="utf-8") as f:
-            f.write(cookies_data)
-        print("✅ Cookie asset written successfully.")
-    except Exception as e:
-        print(f"❌ Failed to write temporary cookie file: {e}")
-
-BYPASS_OPTS = {
-    'quiet': True,
-    'no_warnings': True,
-    'geo_bypass': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['web', 'ios']  # Stripped the restrictive skip rule
-        }
-    },
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    }
-}
-
-if os.path.exists(COOKIE_FILE_PATH):
-    BYPASS_OPTS['cookiefile'] = COOKIE_FILE_PATH
 
 @app.route('/')
 def home():
@@ -86,8 +56,7 @@ def scan_video():
         return jsonify({'error': 'URL cannot be empty'}), 400
 
     try:
-        scan_opts = BYPASS_OPTS.copy()
-        with yt_dlp.YoutubeDL(scan_opts) as ydl:
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
             meta = ydl.extract_info(url, download=False)
             formats = meta.get('formats', [])
             
@@ -121,7 +90,7 @@ def download_video():
         return jsonify({'error': 'Missing URL or Resolution parameters'}), 400
 
     try:
-        with yt_dlp.YoutubeDL(BYPASS_OPTS) as ydl:
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
             meta = ydl.extract_info(url, download=False)
             safe_title = clean_filename(meta.get('title', 'video'))
 
@@ -132,17 +101,17 @@ def download_video():
         output_filename = f"{safe_title}_{target_height}p.mp4"
         output_file = os.path.join(DOWNLOADS_DIR, output_filename)
 
-        video_opts = BYPASS_OPTS.copy()
-        video_opts.update({
+        video_opts{
             'format': f'bestvideo[height={target_height}]/bestvideo[height<={target_height}]',
-            'outtmpl': f"{video_pattern}.%(ext)s"
-        })
+            'outtmpl': f"{video_pattern}.%(ext)s",
+            'quiet': True
+        }
 
-        audio_opts = BYPASS_OPTS.copy()
-        audio_opts.update({
+        audio_opts{
             'format': 'bestaudio',
-            'outtmpl': f"{audio_pattern}.%(ext)s"
-        })
+            'outtmpl': f"{audio_pattern}.%(ext)s",
+            'quiet': True
+        }
 
         with yt_dlp.YoutubeDL(video_opts) as ydl:
             ydl.download([url])
