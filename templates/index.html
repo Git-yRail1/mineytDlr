@@ -3,46 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamMux - YouTube Downloader</title>
+    <title>StreamMux Server Storage Downloader</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121214; color: #e1e1e6; max-width: 600px; margin: 40px auto; padding: 20px; }
-        .card { background: #202024; border-radius: 8px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .card { background: #202024; border-radius: 8px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); margin-bottom: 24px; }
         h1 { margin-top: 0; color: #04d361; font-size: 24px; }
+        h2 { color: #fff; font-size: 18px; margin-top: 0; }
         input[type="text"], select { width: 100%; padding: 12px; border-radius: 4px; border: 1px solid #29292e; background: #121214; color: #fff; box-sizing: border-box; margin-bottom: 16px; font-size: 16px; }
-        button { width: 100%; background: #04d361; color: #121214; border: none; padding: 14px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 16px; transition: background 0.2s; }
+        button { width: 100%; background: #04d361; color: #121214; border: none; padding: 14px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 16px; transition: background 0.2s; margin-bottom: 10px; }
         button:hover { background: #06b956; }
         button:disabled { background: #4d4d56; color: #8d8d99; cursor: not-allowed; }
+        .btn-danger { background: #e04848; color: #fff; }
+        .btn-danger:hover { background: #c53737; }
         .loading { display: none; text-align: center; color: #8d8d99; margin: 15px 0; font-size: 14px; }
         #format-section { display: none; margin-top: 20px; border-top: 1px solid #29292e; padding-top: 20px; }
         .video-title { font-weight: bold; color: #fff; margin-bottom: 12px; }
+        .file-list { list-style: none; padding: 0; margin: 0; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; background: #121214; padding: 12px; border-radius: 4px; margin-bottom: 8px; border: 1px solid #29292e; }
+        .file-item a { color: #04d361; text-decoration: none; font-weight: bold; font-size: 14px; word-break: break-all; margin-right: 10px; }
+        .file-item a:hover { text-decoration: underline; }
+        .empty-text { color: #8d8d99; font-style: italic; font-size: 14px; }
     </style>
 </head>
 <body>
 
 <div class="card">
     <h1>🎬 StreamMux Downloader</h1>
-    <p style="color: #8d8d99; font-size: 14px;">Analyze links and merge precise video resolutions with high-quality audio formats using Railway server power.</p>
     
     <label for="url">Video Link URL</label>
     <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=...">
     
     <button id="scan-btn" onclick="scanVideo()">Analyze Available Formats</button>
-    <div id="scan-loading" class="loading">⏳ Reading streaming codecs and stream layouts...</div>
+    <div id="scan-loading" class="loading">⏳ Reading streaming layouts...</div>
 
     <div id="format-section">
         <div class="video-title" id="video-title"></div>
         <label for="resolution">Select Resolution Track</label>
         <select id="resolution"></select>
         
-        <button id="download-btn" onclick="startDownload()">Download & Mux via FFmpeg</button>
-        <div id="download-loading" class="loading">🎬 Downloading isolated components and weaving final container file...</div>
+        <button id="download-btn" onclick="startDownload()">Process & Store on Server</button>
+        <div id="download-loading" class="loading">🎬 Downloading tracks and merging into server folder...</div>
     </div>
 </div>
 
+<div class="card">
+    <h2>📦 Saved Files Directory</h2>
+    <ul id="file-list" class="file-list">
+        <li class="empty-text">No files generated yet.</li>
+    </ul>
+    <button class="btn-danger" style="margin-top: 20px;" onclick="clearStorage()">Clear Storage Directory</button>
+</div>
+
 <script>
-// FIXED: Changed 'async def' to 'async function'
+// Load file storage on launch
+document.addEventListener("DOMContentLoaded", updateFileList);
+
+async function updateFileList() {
+    try {
+        const response = await fetch('/files');
+        const data = await response.json();
+        const list = document.getElementById('file-list');
+        list.innerHTML = '';
+
+        if(!data.files || data.files.length === 0) {
+            list.innerHTML = '<li class="empty-text">No files stored on server.</li>';
+            return;
+        }
+
+        data.files.forEach(file => {
+            const li = document.createElement('li');
+            li.className = 'file-item';
+            li.innerHTML = `
+                <a href="/files/${encodeURIComponent(file)}" download>${file}</a>
+                <span style="color:#8d8d99; font-size:12px;">Stored ✓</span>
+            `;
+            list.appendChild(li);
+        });
+    } catch(err) {
+        console.error("Failed listing store assets: ", err);
+    }
+}
+
 async function scanVideo() {
-    const url = document.getElementById('url').value.strip ? document.getElementById('url').value.strip() : document.getElementById('url').value.trim();
+    const url = document.getElementById('url').value.trim();
     if(!url) return alert('Please enter a URL first!');
     
     const btn = document.getElementById('scan-btn');
@@ -60,7 +103,6 @@ async function scanVideo() {
             body: JSON.stringify({ url })
         });
         const data = await response.json();
-        
         if(data.error) throw new Error(data.error);
         
         document.getElementById('video-title').innerText = "Found: " + data.title;
@@ -70,7 +112,7 @@ async function scanVideo() {
         data.resolutions.forEach(res => {
             const opt = document.createElement('option');
             opt.value = res.height;
-            opt.innerText = `${res.height}p (.${res.ext})`;
+            opt.innerText = `${res.height}p (.mp4)`;
             selector.appendChild(opt);
         });
         
@@ -83,7 +125,6 @@ async function scanVideo() {
     }
 }
 
-// FIXED: Changed 'async def' to 'async function'
 async function startDownload() {
     const url = document.getElementById('url').value.trim();
     const resolution = document.getElementById('resolution').value;
@@ -99,32 +140,29 @@ async function startDownload() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ url, resolution })
         });
+        const data = await response.json();
 
-        if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || 'Server error downloading');
-        }
+        if (data.error) throw new Error(data.error);
 
-        const blob = await response.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        
-        const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = `downloaded_${resolution}p.mp4`;
-        if (contentDisposition && contentDisposition.includes('filename=')) {
-            filename = contentDisposition.split('filename=')[1].replaceAll('"', '');
-        }
-
-        a.href = downloadUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        alert(`Processing successful! Muxed video saved onto storage folder.`);
+        updateFileList();
     } catch(err) {
         alert("Download Failed: " + err.message);
     } finally {
         btn.disabled = false;
         loading.style.display = 'none';
+    }
+}
+
+async function clearStorage() {
+    if(!confirm("Are you sure you want to delete all stored videos from your server container?")) return;
+    try {
+        const response = await fetch('/clear', { method: 'POST' });
+        const data = await response.json();
+        alert(data.message || data.error);
+        updateFileList();
+    } catch(err) {
+        alert("Failed clearing database workspace: " + err.message);
     }
 }
 </script>
