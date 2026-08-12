@@ -1,2 +1,2 @@
 flask==3.0.3
-yt-dlp>=2025.01.01
+yt-dlp[default]>=2025.11.12
